@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
     "C_Cpp.errorSquiggles": "Disabled",
     "files.associations": {
         "array": "cpp",
@@ -49,4 +50,7 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp"
     }
+=======
+    "C_Cpp.errorSquiggles": "Disabled"
+>>>>>>> 14af9e8dd78d5b5cf3b11599eb20117786c6a006
 }
