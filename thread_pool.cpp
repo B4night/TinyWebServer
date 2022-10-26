@@ -6,21 +6,33 @@ thread_pool::thread_pool(int num) : size(num), is_shutdown(0) {
         fprintf(stderr, "the num of working threads is incorrect\n");
         exit(1);
     }
+    pthread_mutex_init(&lock, NULL);
+    // sem_init(&sem, 0, 0);
+    pthread_cond_init(&not_empty, NULL);
+    pthread_cond_init(&not_full, NULL);
+
     threads.resize(num);
+    pthread_mutex_lock(&lock);
     for (int i = 0; i < num; i++) {
         pthread_create(&threads[i], NULL, work, this);
-        //pthread_detach(threads[i]);
+        // printf("thread %d is created\n", threads[i]);
+        pthread_detach(threads[i]);
     }    
+    pthread_mutex_unlock(&lock);
 }
 
 thread_pool::thread_pool() : thread_pool(default_size) {}
 
 thread_pool::~thread_pool() {
     is_shutdown = 1;
-    for (int i = 0; i < size; i++)
-        sem.post();
-    for (int i = 0; i < size; i++)
-        pthread_join(threads[i], NULL);
+    for (int i = 0; i < size; i++) {
+        // sem_post(&sem);
+        pthread_cond_signal(&not_empty);
+    }
+    pthread_mutex_destroy(&lock);
+    // sem_destroy(&sem);
+    pthread_cond_destroy(&not_empty);
+    pthread_cond_destroy(&not_full);
 }
 
 void* thread_pool::work(void* arg) {
@@ -31,29 +43,29 @@ void* thread_pool::work(void* arg) {
 
 void thread_pool::run() {
     while (true) {
-        sem.wait();
-        if (is_shutdown) {
-            break;
-        }
-
-        lock.lock();
-        if (tasks.empty()) {
-            lock.unlock();
-            continue;
+        printf("in func %s\n", __func__);
+        pthread_mutex_lock(&lock);
+        while (tasks.empty()) {
+            pthread_cond_wait(&not_empty, &lock);
+            if (this->is_shutdown)
+                return;
         }
         task tmp = tasks.front();
         tasks.pop_front();
-        lock.unlock();
+        pthread_cond_signal(&not_full);
+        pthread_mutex_unlock(&lock);
         tmp.fun(tmp.arg);
     }
 }
 
 void thread_pool::add_job(void (*fun)(void*), void* arg) {
-    lock.lock();
+    printf("in func %s\n", __func__);
+    pthread_mutex_lock(&lock);
     task tmp;
     tmp.fun = fun;
     tmp.arg = arg;
     tasks.push_back(tmp);
-    lock.unlock();
-    sem.post();
+    // sem_post(&sem);
+    pthread_cond_signal(&not_empty);
+    pthread_mutex_unlock(&lock);
 }

@@ -1,10 +1,15 @@
-#ifndef _PTHREAD_POLL_H_
-#define _PTHREAD_POLL_H_
+#ifndef _THREAD_POLL_H_
+#define _THREAD_POLL_H_
 
 #include <list>
 #include <vector>
 #include <unistd.h>
-#include "locker.h"
+// #include "locker.h"
+#include <pthread.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <semaphore.h>
 
 class thread_pool {
 private:
@@ -14,8 +19,10 @@ private:
     };
 private:
     int size;       //the num of working threads
-    MyMutex lock;       //a mutex
-    MySemaphore sem;    //semaphore to indicate the num of jobs
+    pthread_mutex_t lock;       //a mutex
+    // sem_t sem;    //semaphore to indicate the num of jobs
+    pthread_cond_t not_empty;
+    pthread_cond_t not_full;
     std::list<task> tasks;
     std::vector<pthread_t> threads; 
 

@@ -27,7 +27,7 @@ public:
     }
     void lock() {
         int ret;
-        if ((ret =  pthread_mutex_lock(&mutex)) != 0) {
+        if ((ret = pthread_mutex_lock(&mutex)) != 0) {
             fprintf(stderr, "pthread_mutex_lock error:%s\n", strerror(ret));
             exit(1);
         }

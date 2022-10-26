@@ -2,59 +2,54 @@
 #define __EPOLL_FRAME_H_
 
 #include <sys/epoll.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/types.h>
+#include <stdio.h>
+#include <errno.h>
 #include <arpa/inet.h>
-#include <string.h>
-#include <time.h>
-
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include "thread_pool.h"
 #define MAX_FD_NUM 1024
 
 class epoll_frame {
 private:
-    class my_event {
-    public:
-        int my_event;
-        int m_fd;
-        void (*cb)(void* arg);    //第一个参数为this
-        void* m_arg;
-
-        epoll_frame* ef;
-
-        static const int BUF_SIZE = 4096;
-        char m_buf[BUF_SIZE];
-        int m_buf_len;
-        int status;
-
-        time_t m_lasttime;
+    struct client_info {
+        struct sockaddr_in addr;
+        char ip[16];
+        int port;
+        int fd;
     };
-
+    struct client_info clients[MAX_FD_NUM];
+    int max_idx;
 private:
     int epfd;
-    int lfd;   
-    my_event my_evs[MAX_FD_NUM + 1]; 
-    epoll_event evs[MAX_FD_NUM];
-
-    bool end;
-public:
-    epoll_frame(int num = 128, int port = 4000);
-    void dispatch();
-    void quit();
+    int lfd;
 private:
-    void init_listen_socket(int port);
-    void eventset(my_event* me, int fd, void (*func)(void*), void* arg);
-    void eventadd(int event, my_event* me);
-    static void acceptconnect(void* arg);
-    void __acceptconnect(int fd, int event);
-    void eventdel(my_event* me);
-    static void recvdata(void* arg);
-    void __recvdata(int fd, int event, my_event* me);
-    static void senddata(void* arg);
-    void __senddata(int fd, int event, my_event* me);
+    struct epoll_event events[MAX_FD_NUM];
+public:
+    epoll_frame(int num, int port = 4000);
+    void dispatch();
+    void set_timer(int interval);
+    static void drop_inactive(void*);
+public:    //SIGALRM handler
+    static int pipefd[2];
+    static void alarm_handler(int);
+private:
+    struct transfer_arg {
+        epoll_frame* ef;
+        int fd;
+    };
+private:
+    thread_pool tp;
+private:
+    void init_clients();
+    void init_socket(int p);
+    static void accept_client(void* arg);
+    void __accept_client();
+    static void communicate(void* arg);
+    void __comminicate(int fd);
 };
 
 #endif

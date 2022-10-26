@@ -1,168 +1,167 @@
 #include "epoll_frame.h"
 
+extern void init(void (*)(int));
+extern void set_interval(int);
+extern void set_cb(void (*cb)(void*), void*);
+
 void sys_err(const char* str) {
     perror(str);
     exit(1);
 }
 
-void set_nonblock(int fd) {
-    int flags = fcntl(fd, F_GETFD);
-    flags |= O_NONBLOCK;
-    fcntl(fd, F_SETFD, flags);
+void setnonblock(int fd) {
+    int flag = fcntl(fd, F_GETFD);
+    flag |= O_NONBLOCK;
+    fcntl(fd, F_SETFD, flag);
 }
 
-epoll_frame::epoll_frame(int num, int port) {
-    printf("server running on the port:%d\n", port);
-    end = 0;
-    epfd = epoll_create(num);
-    if (epfd == -1) {
-        sys_err("epoll_create error\n");
-    }
-    init_listen_socket(port);
-}
-void epoll_frame::init_listen_socket(int port) {
-    lfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (lfd == -1)
-        sys_err("socket error\n");
-    set_nonblock(lfd);
+int epoll_frame::pipefd[2] = {-1, -1};
 
-    struct sockaddr_in addr;
-    bzero(&addr, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(lfd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
-        sys_err("bind error\n");
-    if (listen(lfd, MAX_FD_NUM) == -1)
-        sys_err("listen error\n");
-    eventset(&my_evs[MAX_FD_NUM], lfd, acceptconnect, &my_evs[MAX_FD_NUM]);
-    eventadd(EPOLLIN, &my_evs[MAX_FD_NUM]);
+void epoll_frame::alarm_handler(int sig) {
+    int saved = errno;
+    write(pipefd[1], &sig, 1);
+    errno = saved;
 }
-void epoll_frame::eventset(my_event* me, int fd, void (*func)(void*), void* arg) {
-    me->m_fd = fd;
-    me->my_event = 0;
-    me->cb = func;
-    me->ef = this;
-    me->m_arg = arg;
-    me->status = 0;
-    me->m_lasttime = time(NULL);
-}
-void epoll_frame::eventadd(int event, my_event* me) {
+
+void epoll_frame::set_timer(int interval) {
+    pipe(pipefd);
     struct epoll_event ev;
-    ev.data.ptr = me;
-    ev.events = event;
-    me->my_event = event;
-    int OP;
+    ev.events = EPOLLIN;
+    ev.data.fd = pipefd[0];
+    if ((epoll_ctl(epfd, EPOLL_CTL_ADD, pipefd[0], &ev) == -1))
+        sys_err("epoll_ctl error");
 
-    if (me->status == 0) {
-        OP = EPOLL_CTL_ADD;            
-    } else {
-        fprintf(stderr, "already on epoll tree\n");
-        exit(1);
-    }
-
-    if (epoll_ctl(epfd, OP, me->m_fd, &ev) == -1)
-        sys_err("epoll_ctl error\n");
-    else {
-        printf("event add success: fd=[%d]\n", me->m_fd);
-        me->status = 1;
-    }
-}
-void epoll_frame::acceptconnect(void* arg) {
-    my_event* me = (my_event*)arg;
-    epoll_frame* ef = me->ef;
-    ef->__acceptconnect(me->m_fd, me->my_event);
-}
-void epoll_frame::__acceptconnect(int fd, int event) {
-    struct sockaddr_in client_addr;
-    socklen_t len = sizeof(client_addr);
-    int connfd = accept(lfd, (struct sockaddr*)&client_addr, &len);
-    if (connfd == -1)
-        sys_err("accept error\n");
-    do {
-        int i;
-        for (i = 0; i < MAX_FD_NUM; i++)
-            if (my_evs[i].status == 0)
-                break;
-        if (i == MAX_FD_NUM) {
-            fprintf(stderr, "my_evs is full\n");
-            exit(1);
-        }
-        
-        set_nonblock(connfd);
-        eventset(&my_evs[i], connfd, recvdata, &my_evs[i]);
-        eventadd(EPOLLIN, &my_evs[i]);
-    } while (0);
-    char ip[16];
-    fprintf(stdout, "client addr: %s:%d\n", inet_ntop(AF_INET, &client_addr.sin_addr.s_addr, ip, 16), ntohs(client_addr.sin_port));
-    return;
-
+    init(epoll_frame::alarm_handler);
+    set_interval(interval);
 }
 
-void epoll_frame::eventdel(my_event* me) {
-    if (me->status != 1)
-        return;
-    epoll_ctl(epfd, EPOLL_CTL_DEL, me->m_fd, NULL);
-    me->status = 0;
-    return;
+void epoll_frame::drop_inactive(void*) {
+    printf("123\n");
 }
 
-void epoll_frame::recvdata(void* arg) {
-    my_event* me = (my_event*)arg;
-    epoll_frame* ef = me->ef;
-    ef->__recvdata(me->m_fd, me->my_event, me);
-}    
-void epoll_frame::__recvdata(int fd, int event, my_event* me) {
-    int n = read(me->m_fd, me->m_buf, me->BUF_SIZE);
-    if (n > 0) {
-        me->m_buf_len = n;
-        me->m_buf[n] = 0;
-
-        eventdel(me);
-        eventset(me, me->m_fd, senddata, me);
-        eventadd(EPOLLOUT, me);
-    } else if (n == 0) {
-        eventdel(me);
-        close(me->m_fd);
-    }
-}
-
-void epoll_frame::senddata(void* arg) {
-    my_event* me = (my_event*)arg;
-    epoll_frame* ef = me->ef;
-    ef->__senddata(me->m_fd, me->my_event, me);
-}
-void epoll_frame::__senddata(int fd, int event, my_event* me) {
-    /*
-    handle me->m_buf
-    */
-    int n = write(me->m_fd, me->m_buf, me->m_buf_len);
-    if (n > 0) {
-        eventdel(me);
-        eventset(me, me->m_fd, recvdata, me);
-        eventadd(EPOLLIN, me);
-    } else {
-        eventdel(me);
-        close(me->m_fd);
-    }
+epoll_frame::epoll_frame(int num, int port) : tp(2) {
+    epfd = epoll_create(num);
+    if (epfd == -1)
+        sys_err("epoll_create fail");
+    init_socket(port);
+    init_clients();
 }
 
 void epoll_frame::dispatch() {
-    while (1) {
-        if (end)
-            break;
-        int num = epoll_wait(epfd, evs, MAX_FD_NUM, -1);
+    while (true) {
+        int num = epoll_wait(epfd, events, MAX_FD_NUM, -1);
         if (num <= 0) {
-            sys_err("epoll_wait error \n");
+            if (errno == EINTR)     //block interrupted system call
+                continue;
+            sys_err("epoll_wait error");
         }
+        bool alarm = false;
         for (int i = 0; i < num; i++) {
-            my_event* tmp = (my_event*)evs[i].data.ptr;
-            //可以用线程池改写
-            tmp->cb(tmp->m_arg);
+            if (events[i].data.fd == lfd) {
+                // accept_client(this);
+                tp.add_job(accept_client, this);
+            } else if (events[i].data.fd == pipefd[0]) {
+                char buf[16];
+                read(pipefd[0], buf, 16);   //read the data 
+                alarm = true;
+            } else {
+                transfer_arg ta;
+                ta.ef = this;
+                ta.fd = events[i].data.fd;
+                // communicate(&ta); 
+                tp.add_job(communicate, &ta);
+            }
+            usleep(15);
         }
+        if (alarm)
+            drop_inactive(this);    //do SIGALRM call back function
     }
 }
 
-void epoll_frame::quit() {
-    end = 1;
+void epoll_frame::init_clients() {
+    for (int i = 0; i < MAX_FD_NUM; i++)
+        clients[i].fd = -1;
+}
+
+void epoll_frame::init_socket(int p) {
+    printf("server running on port %d\n", p);
+
+    lfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (lfd == -1)
+        sys_err("socket error");
+    // setnonblock(lfd);
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(p);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    int opt = 1;
+    setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    if (bind(lfd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
+        sys_err("bind error");
+    if (listen(lfd, MAX_FD_NUM) == -1)
+        sys_err("listen error");
+    
+    struct epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.fd = lfd;
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, lfd, &ev) == -1)
+        sys_err("epoll_ctl error");
+}
+
+void epoll_frame::accept_client(void* arg) {
+    epoll_frame* ef = (epoll_frame*)arg;
+    ef->__accept_client();
+}
+
+void epoll_frame::__accept_client() {
+    int i;
+    for (i = 0; i < MAX_FD_NUM; i++)
+        if (clients[i].fd == -1)
+            break;
+    if (i > max_idx)
+        max_idx = i;
+    if (i == MAX_FD_NUM) {
+        fprintf(stderr, "clients are full\n");
+        exit(1);
+    }
+    socklen_t len = sizeof(clients[i].addr);
+    clients[i].fd = accept(lfd, (struct sockaddr*)&clients[i].addr, &len);
+
+    inet_ntop(AF_INET, &clients[i].addr.sin_addr.s_addr, clients[i].ip, 16);
+    clients[i].port = ntohs(clients[i].port);
+
+    printf("Clint addr: %s:%d\n", clients[i].ip, clients[i].port);
+
+    struct epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.fd = clients[i].fd;
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, clients[i].fd, &ev) == -1)
+        sys_err("epoll_ctl add client error");
+}
+
+void epoll_frame::communicate(void* arg) {
+    transfer_arg* ta = (transfer_arg*)arg;
+    ta->ef->__comminicate(ta->fd);
+}
+
+void epoll_frame::__comminicate(int fd) {
+    int i;
+    for (i = 0; i < max_idx; i++)
+        if (clients[i].fd == fd)
+            break;
+    char buf[2048];
+    int n = read(fd, buf, 2048);
+    if (n == 0) {
+        printf("Disconnect with %s:%d\n", clients[i].ip, clients[i].port);
+        clients[i].fd = -1;
+        epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+        close(fd);
+        if (i == max_idx)
+            while (clients[max_idx].fd == -1)
+                max_idx--;
+    }
+
+    write(fd, buf, n);
 }

@@ -9,10 +9,11 @@
                 "-g",
                 "${file}",
                 "${fileDirname}/epoll_frame.cpp",
-                "${fileDirname}/http_conn.cpp",
+                "${fileDirname}/alarm_handler.cpp",
                 "${fileDirname}/thread_pool.cpp",
                 "-o",
-                "${fileDirname}/${fileBasenameNoExtension}"
+                "${fileDirname}/${fileBasenameNoExtension}",
+                "-lpthread"
             ],
             "options": {
                 "cwd": "${fileDirname}"
