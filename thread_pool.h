@@ -13,7 +13,7 @@
 
 class thread_pool {
 private:
-    struct task {
+    struct task {   // 人物列表
         void (*fun)(void*);
         void* arg;
     };
@@ -32,7 +32,7 @@ public:
     thread_pool();
     thread_pool(int num);
     ~thread_pool();
-    void add_job(void (*fun)(void*), void* arg);
+    void add_job(void (*fun)(void*), void* arg);    // 往线程池中添加任务, 回调函数fun, 参数为arg
 private:
     static void* work(void* arg);   //the working threads' call back
     void run();                     //the actual function that work() calls

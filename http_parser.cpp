@@ -12,8 +12,8 @@
 extern void sys_err(const char*);
 
 // remenber to change cwd
-std::string server = "/mnt/hgfs/TinyWebServer/src";
-std::map<std::string, std::string> content_type_table = {
+std::string server = "/mnt/hgfs/TinyWebServer/src"; // current working directory
+std::map<std::string, std::string> content_type_table = {   // 转换表
     { "txt", "text/plain; charset=utf-8" },
 	{ "c", "text/plain; charset=utf-8" },
 	{ "h", "text/plain; charset=utf-8" },
@@ -29,7 +29,7 @@ std::map<std::string, std::string> content_type_table = {
 };
 
 
-int get_line(char* src, char* dst, int len) {
+int get_line(char* src, char* dst, int len) {   // src中存储http报文共len字节, 将start line存储到dst中
     if (len <= 0)
         return -1;
     int i = 0;
@@ -44,7 +44,7 @@ int get_line(char* src, char* dst, int len) {
     return -1;
 }
 
-void unimplemented(int client)
+void unimplemented(int client)  // 未实现method
 {
     char buf[1024];
 
@@ -64,7 +64,7 @@ void unimplemented(int client)
     send(client, buf, strlen(buf), 0);
 }
 
-void header(int fd, const char* type) {
+void header(int fd, const char* type) { // http报文的start line和headers
     char buf[1024];
 
     strcpy(buf, "HTTP/1.0 200 OK\r\n");
@@ -75,28 +75,28 @@ void header(int fd, const char* type) {
     send(fd, buf, strlen(buf), 0);
 }
 
-bool find_type(const char* filename, char* type) {
+bool find_type(const char* filename, char* type) {  // 找到filename的类型, 在content_type_table中有就返回true
     int len = strlen(filename);
     int i, k;
     for (i = 0; i < len; i++)
-        if (filename[i] == '.')
+        if (filename[i] == '.') // 如abc.txt, '.'后面的就是文件类型
             break;
     if (i == len)
         return false;
     i++;
-    for (k = 0; i < len; i++, k++)
-        type[k] = filename[i];
+    for (k = 0; i < len; i++, k++)  // type存储文件类型
+        type[k] = filename[i]; 
     type[k] = 0;
 
     std::string tmp = type;
-    if (content_type_table.count(tmp) == 0)
+    if (content_type_table.count(tmp) == 0) // 在map中查找有无文件类型的对应类型
         return false;
     tmp = content_type_table[tmp];
     strcpy(type, tmp.c_str());
     return true;
 }
 
-void type_not_support(int fd) {
+void type_not_support(int fd) { // 不支持的文件类型
     char buf[1024];
 
     sprintf(buf, "HTTP/1.0 404 NOT FOUND\r\n");
@@ -113,7 +113,7 @@ void type_not_support(int fd) {
     send(fd, buf, strlen(buf), 0);
 }
 
-void file_not_found(int fd) {
+void file_not_found(int fd) {   // 未找到文件
     char buf[1024];
 
     sprintf(buf, "HTTP/1.0 404 NOT FOUND\r\n");
@@ -130,22 +130,22 @@ void file_not_found(int fd) {
     send(fd, buf, strlen(buf), 0);
 }
 
-void serve_file(int fd, const char* filename) {
-    int filefd = open(filename, O_RDWR);
+void serve_file(int fd, const char* filename) { // 传文件数据给fd
+    int filefd = open(filename, O_RDWR);    // 根据文件名打开
     char type[256];
     if (find_type(filename, type) == false) {
         type_not_support(fd);
         return;
     }
-    header(fd, type);
+    header(fd, type);   // 传start line和header
     char tmp[4096];
     int n;
-    while ((n = read(filefd, tmp, 4096)) != 0)
+    while ((n = read(filefd, tmp, 4096)) != 0)  // 传数据
         write(fd, tmp, n);
     close(filefd);
 }
 
-void serve_directory(int fd, const char* dirname) {
+void serve_directory(int fd, const char* dirname) { // 传目录给fd
     char buf[4096] = { 0 };
     strcat(buf, "HTTP/1.1 200 OK\r\n");
     strcat(buf, "Content-Type: text/html; charset=utf-8\r\n\r\n");
@@ -158,8 +158,8 @@ void serve_directory(int fd, const char* dirname) {
     struct dirent* di;
 
     server = dirname;
-    while ((di = readdir(d)) != NULL) {
-        sprintf(buf, "<a href=\"%s\">%s</a><br>", (server + "/" + di->d_name).c_str(), di->d_name);
+    while ((di = readdir(d)) != NULL) {     // 使用readdir得到目录中的文件属性
+        sprintf(buf, "<a href=\"%s\">%s</a><br>", (server + "/" + di->d_name).c_str(), di->d_name); // 链接
         write(fd, buf, strlen(buf));
     }
 
@@ -167,10 +167,9 @@ void serve_directory(int fd, const char* dirname) {
     write(fd, buf, strlen(buf));
 }
 
-// buf stores http request from fd, len is the length
-void solve_request(int fd, char* buf, int len) {
-    char method[64];
-    char url[256];
+void solve_request(int fd, char* buf, int len) {    // 处理http报文
+    char method[64];    // 存储http start line的method
+    char url[256];      // 存储http start line的url
     char tmp[1024];
     bzero(url, sizeof(url));
     bzero(method, sizeof(method));
@@ -187,7 +186,7 @@ void solve_request(int fd, char* buf, int len) {
     if (strcasecmp(method, "GET") && strcasecmp(method, "POST"))
         unimplemented(fd);
     if (strcasecmp(method, "GET") == 0) {    // method is GET
-        if (strcmp(url, "/") == 0) {
+        if (strcmp(url, "/") == 0) {    // 此时说明是主目录
             serve_directory(fd, server.c_str());
             return;
         }
@@ -197,16 +196,18 @@ void solve_request(int fd, char* buf, int len) {
             file_not_found(fd);
             return;
         }
-        if (S_IFREG & st.st_mode)
-            serve_file(fd, url);
+        if (S_IFREG & st.st_mode)   // 根据url的类型选择传文件还是传目录
+            serve_file(fd, url);    
         if (S_IFDIR & st.st_mode)
             serve_directory(fd, url);
     }
+    if (strcasecmp(method, "POST") == 0) {
+        // unimplemented
+    }
 }
 
-void inactive_handler(int fd) {
+void inactive_handler(int fd) { // 定时器回调函数调用的
     char buf[1024];
-
     sprintf(buf, "You are not active.\r\n");
     send(fd, buf, strlen(buf), 0);
 }

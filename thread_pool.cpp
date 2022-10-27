@@ -14,9 +14,9 @@ thread_pool::thread_pool(int num) : size(num), is_shutdown(0) {
     threads.resize(num);
     pthread_mutex_lock(&lock);
     for (int i = 0; i < num; i++) {
-        pthread_create(&threads[i], NULL, work, this);
+        pthread_create(&threads[i], NULL, work, this);  // 创建线程
         // printf("thread %d is created\n", threads[i]);
-        pthread_detach(threads[i]);
+        pthread_detach(threads[i]);        // detach线程
     }    
     pthread_mutex_unlock(&lock);
 }
@@ -35,13 +35,13 @@ thread_pool::~thread_pool() {
     pthread_cond_destroy(&not_full);
 }
 
-void* thread_pool::work(void* arg) {
+void* thread_pool::work(void* arg) {    // 工作线程调用
     thread_pool* pool = (thread_pool*)arg;
     pool->run();
     return pool;
 }
 
-void thread_pool::run() {
+void thread_pool::run() {   // 工作线程处理逻辑的函数
     while (true) {
         printf("in func %s\n", __func__);
         pthread_mutex_lock(&lock);
@@ -50,7 +50,7 @@ void thread_pool::run() {
             if (this->is_shutdown)
                 return;
         }
-        task tmp = tasks.front();
+        task tmp = tasks.front();   // 从任务列表中取出任务, 执行
         tasks.pop_front();
         pthread_cond_signal(&not_full);
         pthread_mutex_unlock(&lock);
@@ -58,7 +58,7 @@ void thread_pool::run() {
     }
 }
 
-void thread_pool::add_job(void (*fun)(void*), void* arg) {
+void thread_pool::add_job(void (*fun)(void*), void* arg) {  // 向线程池中添加任务
     printf("in func %s\n", __func__);
     pthread_mutex_lock(&lock);
     task tmp;
