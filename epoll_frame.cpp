@@ -3,6 +3,7 @@
 extern void init(void (*)(int));
 extern void set_interval(int);
 extern void set_cb(void (*cb)(void*), void*);
+extern void solve_request(int fd, char* buf, int len);
 
 void sys_err(const char* str) {
     perror(str);
@@ -153,7 +154,19 @@ void epoll_frame::__comminicate(int fd) {
             break;
     char buf[2048];
     int n = read(fd, buf, 2048);
-    if (n == 0) {
+
+    printf("\n\n");
+
+    for (int k = 0; k < n; k++) {
+        printf("%c", buf[k]);
+    }
+
+    printf("\n\n");
+
+    if (n <= 0) {
+        if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+            return;
+
         printf("Disconnect with %s:%d\n", clients[i].ip, clients[i].port);
         clients[i].fd = -1;
         epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
@@ -161,7 +174,10 @@ void epoll_frame::__comminicate(int fd) {
         if (i == max_idx)
             while (clients[max_idx].fd == -1)
                 max_idx--;
+        return;
     }
 
-    write(fd, buf, n);
+    //this part for http parser
+    // write(fd, buf, n);
+    solve_request(fd, buf, n);
 }

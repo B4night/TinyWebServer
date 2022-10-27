@@ -11,6 +11,7 @@
                 "${fileDirname}/epoll_frame.cpp",
                 "${fileDirname}/alarm_handler.cpp",
                 "${fileDirname}/thread_pool.cpp",
+                "${fileDirname}/http_parser.cpp",
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}",
                 "-lpthread"
