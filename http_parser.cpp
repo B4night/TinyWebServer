@@ -203,3 +203,10 @@ void solve_request(int fd, char* buf, int len) {
             serve_directory(fd, url);
     }
 }
+
+void inactive_handler(int fd) {
+    char buf[1024];
+
+    sprintf(buf, "You are not active.\r\n");
+    send(fd, buf, strlen(buf), 0);
+}

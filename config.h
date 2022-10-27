@@ -14,7 +14,7 @@
 
 void run() {
     epoll_frame ef(1024);
-    ef.set_timer(3);
+    ef.set_timer(10);
     ef.dispatch();
 }
 

@@ -20,6 +20,7 @@ private:
         char ip[16];
         int port;
         int fd;
+        time_t last_active;
     };
     struct client_info clients[MAX_FD_NUM];
     int max_idx;
@@ -32,10 +33,12 @@ public:
     epoll_frame(int num, int port = 4000);
     void dispatch();
     void set_timer(int interval);
-    static void drop_inactive(void*);
+    void drop_inactive();
 public:    //SIGALRM handler
     static int pipefd[2];
     static void alarm_handler(int);
+private:
+    int global_interval;
 private:
     struct transfer_arg {
         epoll_frame* ef;

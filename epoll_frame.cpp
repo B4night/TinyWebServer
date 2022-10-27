@@ -4,6 +4,7 @@ extern void init(void (*)(int));
 extern void set_interval(int);
 extern void set_cb(void (*cb)(void*), void*);
 extern void solve_request(int fd, char* buf, int len);
+extern void inactive_handler(int fd);
 
 void sys_err(const char* str) {
     perror(str);
@@ -34,10 +35,20 @@ void epoll_frame::set_timer(int interval) {
 
     init(epoll_frame::alarm_handler);
     set_interval(interval);
+    global_interval = interval;
 }
 
-void epoll_frame::drop_inactive(void*) {
-    printf("123\n");
+void epoll_frame::drop_inactive() {
+    for (int i = 0; i <= max_idx; i++) {
+        if (time(NULL) - clients[i].last_active > global_interval) {
+            inactive_handler(clients[i].fd);
+            epoll_ctl(epfd, EPOLL_CTL_DEL, clients[i].fd, NULL);
+            clients[i].fd = -1;
+            if (max_idx == i)
+                while (clients[max_idx].fd == -1)
+                    max_idx--;
+        }
+    }
 }
 
 epoll_frame::epoll_frame(int num, int port) : tp(2) {
@@ -75,7 +86,7 @@ void epoll_frame::dispatch() {
             usleep(15);
         }
         if (alarm)
-            drop_inactive(this);    //do SIGALRM call back function
+            drop_inactive();    //do SIGALRM call back function
     }
 }
 
@@ -121,6 +132,7 @@ void epoll_frame::__accept_client() {
     for (i = 0; i < MAX_FD_NUM; i++)
         if (clients[i].fd == -1)
             break;
+    clients[i].last_active = time(NULL);
     if (i > max_idx)
         max_idx = i;
     if (i == MAX_FD_NUM) {
@@ -149,9 +161,10 @@ void epoll_frame::communicate(void* arg) {
 
 void epoll_frame::__comminicate(int fd) {
     int i;
-    for (i = 0; i < max_idx; i++)
+    for (i = 0; i <= max_idx; i++)
         if (clients[i].fd == fd)
             break;
+    clients[i].last_active = time(NULL);
     char buf[2048];
     int n = read(fd, buf, 2048);
 
