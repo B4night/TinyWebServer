@@ -13,7 +13,7 @@
 
 class thread_pool {
 private:
-    struct task {   // 人物列表
+    struct task {   // 任务列表
         void (*fun)(void*);
         void* arg;
     };
@@ -22,7 +22,6 @@ private:
     pthread_mutex_t lock;       //a mutex
     // sem_t sem;    //semaphore to indicate the num of jobs
     pthread_cond_t not_empty;
-    pthread_cond_t not_full;
     std::list<task> tasks;
     std::vector<pthread_t> threads; 
 
